@@ -1,0 +1,5 @@
+# to ignore
+credentials.py
+socialGenv/*
+*.db
+__pycache__/*

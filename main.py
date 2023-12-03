@@ -4,7 +4,7 @@ import json
 import pandas as pd
 import sys
 from credentials import headers, headers_info, example_user
-from functionalities import user_info_create, generate_user_info_insert_query
+from functionalities import user_info_create, generate_user_info_insert_query, get_values_by_key
 
 conn = sqlite3.connect('users_db.db')
 cursor = conn.cursor()
@@ -65,7 +65,13 @@ def insertUserInfo(user_info_t):
     columns = get_column_names("user_info")
     
     # Construct the list of values
-    values = [user_info_t.get(column, None) for column in columns]
+    # values = [user_info_t.get(column, None) for column in columns]
+    values = []
+    for column in columns:
+        column_values = get_values_by_key(user_info_t, column)
+        # Use the first value if available, otherwise set to None
+        value = column_values[0] if column_values else None
+        values.append(value)
 
     # Create a string with placeholders for values
     placeholders = ','.join(['?' for _ in values])

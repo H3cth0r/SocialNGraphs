@@ -81,3 +81,16 @@ def generate_user_info_insert_query(user_info):
     
     return insert_query
 
+def get_values_by_key(json_obj, target_key):
+    results = []
+
+    if isinstance(json_obj, dict):
+        for key, value in json_obj.items():
+            if key == target_key:
+                results.append(value)
+            else:
+                results.extend(get_values_by_key(value, target_key))
+    elif isinstance(json_obj, list):
+        for item in json_obj:
+            results.extend(get_values_by_key(item, target_key))
+    return results

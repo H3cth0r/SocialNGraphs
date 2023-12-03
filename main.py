@@ -41,7 +41,7 @@ def insertData(user_id_t, json_data):
     ids = []
     for user_data in json_data["users"]:
         cursor.execute('''
-            INSERT INTO users
+            INSERT OR IGNORE INTO users
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             user_data["pk_id"],
@@ -53,12 +53,17 @@ def insertData(user_id_t, json_data):
             int(user_data["latest_reel_media"]),
             int(user_data["is_favorite"])
         ))
+
+        # Check if a new user was inserted
+        # ids.append(user_data["pk_id"])
+        if cursor.rowcount > 0:
+            ids.append(user_data["pk_id"])
+
         cursor.execute('''
-            INSERT INTO friendships (user_pk_id, friend_pk_id)
+            INSERT OR IGNORE INTO friendships (user_pk_id, friend_pk_id)
             VALUES (?, ?)
         ''', (user_id_t, user_data["pk_id"]))
         conn.commit()
-        ids.append(user_data["pk_id"])
     return ids
 
 def insertUserInfo(user_info_t):

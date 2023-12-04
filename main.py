@@ -1,8 +1,10 @@
 import requests
+import time
 import sqlite3
 import json
 import pandas as pd
 import sys
+from tqdm import tqdm
 from credentials import headers, headers_info, example_user
 from functionalities import user_info_create, generate_user_info_insert_query, get_values_by_key
 
@@ -10,12 +12,12 @@ conn = sqlite3.connect('users_db.db')
 cursor = conn.cursor()
 pd.set_option('display.max_columns', None)
 
-def fetchFriendships(user_id, list_t, count_t):
-    url = f"https://www.instagram.com/api/v1/friendships/{user_id}/{list_t}/?count={count_t}"
+def fetchFriendships(user_id, list_t, count_t, max_id=0):
+    url = f"https://www.instagram.com/api/v1/friendships/{user_id}/{list_t}/?count={count_t}&max_id={max_id}"
     response = requests.get(url, headers=headers)
 
     if response.status_code == 200:
-        print("GET request successful")
+        # print("GET request successful")
         json_data = response.json()
         # json_data = json.dumps(json_data, indent=2)
         # print(json_data['users'][0])
@@ -29,9 +31,9 @@ def fetchUserInfo(user_id):
     response = requests.get(url_info, headers=headers)
 
     if response.status_code == 200:
-        print("GET request successful")
+        # print("GET request successful")
         json_data = response.json()
-        print(json_data.keys())
+        # print(json_data.keys())
         return json_data
     else:
         print(f"GET request failed with status code {response.status_code}")
@@ -65,7 +67,22 @@ def insertData(user_id_t, json_data):
         ''', (user_id_t, user_data["pk_id"]))
         conn.commit()
     return ids
+def insertIntoGenericTable(tableName_t, jsonObj):
+    columns = get_column_names(tableName_t)
+    values = []
+    for column in columns:
+        column_values = get_values_by_key(jsonObj, column)
+        value = column_values[0] if column_values else None
+        values.append(value)
+    placeholders = ','.join(['?' for _ in values])
+    query = f"INSERT OR IGNORE INTO {tableName_t} ({', '.join(columns)}) VALUES ({placeholders});"
 
+    try:
+        cursor.execute(query, values)
+        conn.commit()
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        conn.rollback()
 def insertUserInfo(user_info_t):
     columns = get_column_names("user_info")
     
@@ -82,7 +99,7 @@ def insertUserInfo(user_info_t):
     placeholders = ','.join(['?' for _ in values])
 
     # Construct the SQL query
-    query = f"INSERT INTO user_info ({', '.join(columns)}) VALUES ({placeholders});"
+    query = f"INSERT OR IGNORE INTO user_info ({', '.join(columns)}) VALUES ({placeholders});"
 
     try:
         # Execute the query with the values
@@ -134,6 +151,21 @@ def initDB():
         )
     ''')
     conn.commit()
+
+    """
+    0 - not processed
+    1 - in process 
+    2 - processed
+    """
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users_queue (
+            user_pk_id TEXT,
+            status INTEGER DEFAULT 0,
+            PRIMARY KEY (user_pk_id),
+            FOREIGN KEY (user_pk_id) REFERENCES users(pk_id)
+        )
+    ''')
+    conn.commit()
 def get_column_names(table_name):
     cursor = conn.cursor()
 
@@ -151,13 +183,59 @@ def get_column_names(table_name):
     except Exception as e:
         print(f"Error: {str(e)}")
         return None
-
 def createCorpus(user_id_t):
     user_data = fetchFriendships(user_id_t, "following", 10)
     ids = insertData(user_id_t, user_data)
     for pk in ids:
         user_info = fetchUserInfo(pk)['user']
         insertUserInfo(user_info)
+def iterateUserList(referal_user_id, type_list="following", count=50, max_it=1000):
+    progress_bar = tqdm(total=max_it, desc=f"Fetching User list - {type_list}", unit="iteration")
+    max_id = 0
+    counter_samples = 0
+    while max_id != None:
+        user_data = fetchFriendships(referal_user_id, "following", count, max_id)
+        ids = insertData(referal_user_id, user_data)
+        # print(user_data)
+        for pk in ids:
+            # if user already in db, then dont fetch data
+            cursor.execute('''
+                SELECT * FROM user_info
+                WHERE pk_id = ?
+            ''', (pk,))
+            result = cursor.fetchone()
+            time.sleep(6)
+
+            if result is not None:continue
+
+            user_info = fetchUserInfo(pk)['user']
+            insertUserInfo(user_info)
+            cursor.execute('''
+                INSERT OR IGNORE INTO users_queue (user_pk_id, status) 
+                VALUES (?, ?)
+            ''', (pk,0))
+            conn.commit()
+            counter_samples += 1 
+            progress_bar.update(1)
+
+        if counter_samples > max_it:
+            break
+        max_id = int(user_data.get('next_max_id', None))
+        time.sleep(3)
+    progress_bar.close()
+def fetchTargetUser(user_id_t):
+    # Add target user info to db
+    target_user_info = fetchUserInfo(user_id_t)['user']
+    insertIntoGenericTable('users', target_user_info) 
+    insertUserInfo(target_user_info) 
+
+    # iterate over all the following 
+    # add users to stack
+    iterateUserList(user_id_t, max_it=int(target_user_info['following_count']))
+
+    # iterate over all the followers 
+    # add users to stack
+    iterateUserList(user_id_t, type_list="followers", max_it=int(target_user_info['follower_count']))
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
@@ -168,6 +246,7 @@ if __name__ == "__main__":
         else:
             exit(0) 
     else:
-        createCorpus(example_user)
+        # createCorpus(example_user)
+        fetchTargetUser(example_user)
     conn.close()
      

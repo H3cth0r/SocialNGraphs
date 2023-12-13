@@ -6,7 +6,7 @@ dbh = DBHandler("users_db.db")
 wpb = WrapperBot(headers)
 
 def createCorpus(user_id_t):
-    user_data   = wpb.fetchFriendships(user_id_t, "following", 10)
+    user_data   = wpb.fetchFriendShips(user_id_t, "following", 10)
     ids         = dbh.insertData(user_id_t, user_data)
     for pk in ids:
         user_info = wpb.fetchUserInfo(pk)['user']

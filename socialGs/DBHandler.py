@@ -107,7 +107,7 @@ class DBHandler:
         @param  tableName_t     name of the table to insert into.
         @param  jsonObject_t    json object to insert.
         """
-        columns = get_column_names(tableName_t)
+        columns = self.getColumnNames(tableName_t)
         values = []
         for column in columns:
             column_values = get_values_by_key(jsonObject_t, column)
@@ -127,7 +127,7 @@ class DBHandler:
         @brief  insert single target user to the db
         @param  userInfo_t target user to insert
         """
-        columns = get_column_names("user_info")
+        columns = self.getColumnNames("user_info")
         
         # Construct the list of values
         # values = [userInfo_t.get(column, None) for column in columns]
@@ -163,6 +163,24 @@ class DBHandler:
         try:
             # Execute the PRAGMA query to get table information
             self.cursor.execute(f"PRAGMA table_info({tableName})")
+
+            # Fetch all rows from the result
+            columns_info = self.cursor.fetchall()
+
+            # Extract column names from the result
+            column_names = [column[1] for column in columns_info]
+
+            return column_names
+        except Exception as e:
+            print(f"Error: {str(e)}")
+            return None
+
+    def get_column_names(self, table_name):
+        self.cursor = conn.cursor()
+
+        try:
+            # Execute the PRAGMA query to get table information
+            self.cursor.execute(f"PRAGMA table_info({table_name})")
 
             # Fetch all rows from the result
             columns_info = self.cursor.fetchall()
